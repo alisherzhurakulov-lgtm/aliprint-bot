@@ -81,18 +81,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-# ======================== ДИАГНОСТИКА ========================
-import telegram.ext.filters as filters
-print("=" * 50)
-print("ДОСТУПНЫЕ ФИЛЬТРЫ:")
-all_filters = [attr for attr in dir(filters) if not attr.startswith('_')]
-print("В telegram.ext.filters:", all_filters)
-
-if hasattr(filters, 'StatusUpdate'):
-    print("\nВ filters.StatusUpdate:")
-    status_update_attrs = [attr for attr in dir(filters.StatusUpdate) if not attr.startswith('_')]
-    print(status_update_attrs)
-print("=" * 50)
 # ============================================================
 # ============================================================
 
@@ -319,7 +307,7 @@ def main() -> None:
     
     # ГЛАВНЫЙ ОБРАБОТЧИК ДЛЯ BUSINESS! - ИСПРАВЛЕНО
     application.add_handler(MessageHandler(
-        filters.StatusUpdate.BUSINESS_MESSAGE,  # <- ВОТ ПРАВИЛЬНОЕ НАЗВАНИЕ!
+        filters.UpdateType.BUSINESS_MESSAGE,  # <- ВОТ ПРАВИЛЬНОЕ НАЗВАНИЕ!
         business_message
     ))
     
@@ -328,6 +316,7 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
 
 
 
