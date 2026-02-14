@@ -304,9 +304,9 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    # ГЛАВНЫЙ ОБРАБОТЧИК ДЛЯ BUSINESS!
+    # ГЛАВНЫЙ ОБРАБОТЧИК ДЛЯ BUSINESS! - ИСПРАВЛЕНО
     application.add_handler(MessageHandler(
-        filters.StatusUpdate.BUSINESS_MESSAGE, 
+        filters.BUSINESS_MESSAGE,  # <- ИЗМЕНЕНО ЗДЕСЬ!
         business_message
     ))
     
@@ -315,3 +315,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
