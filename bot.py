@@ -9,6 +9,7 @@ Telegram BUSINESS Bot для типографии АлиПринт
 import logging
 import json
 import os
+import asyncio
 from datetime import datetime
 from typing import Dict, Any
 
@@ -76,12 +77,12 @@ SERVICES = {
 
 REQUESTS_FILE = "requests.json"
 
+# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-# ============================================================
 # ============================================================
 
 def get_main_keyboard():
@@ -98,16 +99,12 @@ def get_main_keyboard():
 # ======================== ОБРАБОТЧИКИ ========================
 
 async def business_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    ГЛАВНЫЙ ОБРАБОТЧИК для сообщений в бизнес-аккаунте!
-    Срабатывает, когда клиент пишет в @aliprintru
-    """
-    business_connection = update.business_connection
-    message = update.business_message
-    
-    # Проверяем, что сообщение от клиента (не от владельца)
-    if message.from_user.id != business_connection.user.id:
-        logger.info(f"Сообщение в бизнес-аккаунт от @{message.from_user.username}: {message.text}")
+    """Обработчик для сообщений в бизнес-аккаунте"""
+    try:
+        business_connection = update.business_connection
+        message = update.business_message
+        
+        logger.info(f"Получено business сообщение от @{message.from_user.username}: {message.text}")
         
         # Приветственное сообщение
         welcome_text = (
@@ -118,48 +115,57 @@ async def business_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"Чем мы можем вам помочь? Выберите действие:"
         )
         
-        # Отправляем ответ (он придет от имени @aliprintru)
         await message.reply_text(
             welcome_text,
             reply_markup=get_main_keyboard(),
             parse_mode='Markdown'
         )
+        logger.info("Ответ отправлен в бизнес-чат")
+    except Exception as e:
+        logger.error(f"Ошибка в business_message: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик команды /start (когда пишут боту напрямую)"""
-    welcome_text = (
-        f"👋 Рады вам в нашей коммерческой типографии *АлиПринт*!\n\n"
-        f"{CONTACTS['working_hours']}\n\n"
-        f"📍 {CONTACTS['address']}\n"
-        f"🚇 {CONTACTS['metro']}\n\n"
-        f"Выберите нужное действие:"
-    )
-    
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=get_main_keyboard(),
-        parse_mode='Markdown'
-    )
+    """Обработчик команды /start"""
+    try:
+        welcome_text = (
+            f"👋 Рады вам в нашей коммерческой типографии *АлиПринт*!\n\n"
+            f"{CONTACTS['working_hours']}\n\n"
+            f"📍 {CONTACTS['address']}\n"
+            f"🚇 {CONTACTS['metro']}\n\n"
+            f"Выберите нужное действие:"
+        )
+        
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=get_main_keyboard(),
+            parse_mode='Markdown'
+        )
+        logger.info(f"Ответ на /start отправлен пользователю @{update.effective_user.username}")
+    except Exception as e:
+        logger.error(f"Ошибка в start: {e}")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик нажатий на кнопки"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == "services":
-        await show_services(query)
-    elif query.data == "contacts":
-        await show_contacts(query)
-    elif query.data == "order":
-        await create_order(query, context)
-    elif query.data == "price":
-        await send_price(query)
-    elif query.data == "call_manager":
-        await call_manager(query, context)
-    elif query.data.startswith("service_"):
-        await show_service_detail(query)
-    elif query.data == "back_to_main":
-        await back_to_main(query)
+    try:
+        if query.data == "services":
+            await show_services(query)
+        elif query.data == "contacts":
+            await show_contacts(query)
+        elif query.data == "order":
+            await create_order(query, context)
+        elif query.data == "price":
+            await send_price(query)
+        elif query.data == "call_manager":
+            await call_manager(query, context)
+        elif query.data.startswith("service_"):
+            await show_service_detail(query)
+        elif query.data == "back_to_main":
+            await back_to_main(query)
+    except Exception as e:
+        logger.error(f"Ошибка в button_callback: {e}")
 
 async def show_services(query) -> None:
     """Показывает меню услуг"""
@@ -234,7 +240,7 @@ async def create_order(query, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         await context.bot.send_message(chat_id=MANAGER_ID, text=manager_text, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Ошибка уведомления: {e}")
+        logger.error(f"Ошибка уведомления менеджера: {e}")
     
     text = f"📝 *Заполните форму*\n\n[Открыть форму заказа]({LINKS['order_form']})"
     
@@ -270,9 +276,11 @@ async def call_manager(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     try:
         manager_text = (
-            f"🚨 *СРОЧНЫЙ ВЫЗОВ!*\n\n"
-            f"👤 {user.first_name} @{user.username}\n"
-            f"👉 [Ответить](tg://user?id={user.id})"
+            f"🚨 *СРОЧНЫЙ ВЫЗОВ МЕНЕДЖЕРА!*\n\n"
+            f"👤 Имя: {user.first_name} {user.last_name or ''}\n"
+            f"📱 Username: @{user.username or 'не указан'}\n"
+            f"🆔 ID: {user.id}\n"
+            f"👉 [Написать пользователю](tg://user?id={user.id})"
         )
         await context.bot.send_message(chat_id=MANAGER_ID, text=manager_text, parse_mode='Markdown')
         
@@ -280,10 +288,10 @@ async def call_manager(query, context: ContextTypes.DEFAULT_TYPE) -> None:
             "✅ *Менеджер вызван!*\n\nСкоро свяжемся!",
             parse_mode='Markdown'
         )
-    except:
-        await query.edit_message_text("❌ Ошибка вызова")
+    except Exception as e:
+        logger.error(f"Ошибка вызова менеджера: {e}")
+        await query.edit_message_text("❌ Ошибка вызова менеджера")
     
-    import asyncio
     await asyncio.sleep(2)
     await back_to_main(query)
 
@@ -299,25 +307,33 @@ async def back_to_main(query) -> None:
 
 def main() -> None:
     """Запуск бота"""
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Регистрируем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # ГЛАВНЫЙ ОБРАБОТЧИК ДЛЯ BUSINESS! - ИСПРАВЛЕНО
-    application.add_handler(MessageHandler(
-        filters.UpdateType.BUSINESS_MESSAGE,  # <- ВОТ ПРАВИЛЬНОЕ НАЗВАНИЕ!
-        business_message
-    ))
-    
-    logger.info("🚀 BUSINESS бот запущен и ждет сообщения в @aliprintru")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        logger.info("🚀 Запуск BUSINESS бота для @aliprintru")
+        
+        # Создаем приложение
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Регистрируем обработчики
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CallbackQueryHandler(button_callback))
+        
+        # Обработчик для бизнес-сообщений
+        application.add_handler(MessageHandler(
+            filters.UpdateType.BUSINESS_MESSAGE,
+            business_message
+        ))
+        
+        logger.info("✅ Бот успешно инициализирован, начинаем polling...")
+        
+        # Запускаем бота (эта функция блокирует выполнение)
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка при запуске бота: {e}")
+        # Не завершаем процесс сразу, даем время на логи
+        import time
+        time.sleep(5)
+        raise e
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
