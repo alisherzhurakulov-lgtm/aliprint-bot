@@ -306,7 +306,7 @@ def main() -> None:
     
     # ГЛАВНЫЙ ОБРАБОТЧИК ДЛЯ BUSINESS! - ИСПРАВЛЕНО
     application.add_handler(MessageHandler(
-        filters.BUSINESS_MESSAGE,  # <- ИЗМЕНЕНО ЗДЕСЬ!
+        filters.StatusUpdate.BUSINESS_MESSAGE,  # <- ВОТ ПРАВИЛЬНОЕ НАЗВАНИЕ!
         business_message
     ))
     
@@ -315,4 +315,5 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
 
