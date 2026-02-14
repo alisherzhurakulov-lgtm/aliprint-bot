@@ -27,7 +27,7 @@ from telegram.ext import (
 )
 
 # ======================== НАСТРОЙКИ ========================
-TELEGRAM_TOKEN = "8536900751:AAHjMDyZoeRzdBKacRj7jxPSCu_RPp3EWYg"
+TELEGRAM_TOKEN = "8418731158:AAHv-xLv6ul5nJJJUspSI9Qrx-UjIBJk5TQ"
 MANAGER_ID = 860529281
 
 # Контактная информация
@@ -316,6 +316,7 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
 
 
 
