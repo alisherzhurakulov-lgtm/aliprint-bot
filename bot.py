@@ -4,7 +4,7 @@
 """
 Telegram BUSINESS Bot для типографии АлиПринт
 Бот отвечает на сообщения в бизнес-аккаунте @aliprintru
-Версия: Умный автоответчик (1 раз в 12 часов на диалог) + Самопинг
+Версия: Умный автоответчик (1 раз в 12 часов на пользователя) + Самопинг
 """
 
 import logging
@@ -36,7 +36,7 @@ MANAGER_ID = 860529281
 # Контактная информация
 CONTACTS = {
     "address": "Москва, 1-й Красногорский проезд, 4с3А, 1 этаж",
-    "metro": "Ближайшие станции: МЦК Лужники, м. Спортивная, м. Фрунзенская",
+    "metro": "Ближайшие станции: МЦК Стрешнево, м. Сокол, м. Войковская",
     "phone": "+7 (925) 202-94-52",
     "phone_link": "+79252029452",
     "working_hours": """
@@ -128,6 +128,10 @@ def save_request(user_data: Dict[str, Any]) -> None:
 
 # Загружаем историю при старте
 user_response_history = load_responses()
+# Словарь для блокировок (защита от одновременных сообщений)
+response_locks = {}
+# Словарь для отслеживания напоминаний
+last_reminder = {}
 # ============================================================
 
 def get_main_keyboard():
@@ -147,19 +151,8 @@ def get_main_keyboard():
 async def ping_self(context: ContextTypes.DEFAULT_TYPE):
     """Пинг самого себя каждые 10 минут, чтобы Render не усыпил"""
     try:
-        # Просто логируем, что бот жив
         logger.info(f"🏓 Самопинг: бот активен, обработано диалогов: {len(user_response_history)}")
-        
-        # Можно также пинговать свой URL если известен
-        render_url = os.environ.get("RENDER_EXTERNAL_URL")
-        if render_url:
-            import aiohttp
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{render_url}/health", timeout=5) as resp:
-                        logger.info(f"🌐 Пинг Render: {resp.status}")
-            except:
-                pass
+        # Просто логируем активность - этого достаточно для самопинга
     except Exception as e:
         logger.error(f"❌ Ошибка самопинга: {e}")
 
@@ -170,67 +163,73 @@ async def business_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     Умный обработчик для сообщений в бизнес-аккаунте:
     - Отвечает только на первое сообщение в диалоге
     - Не чаще чем раз в 12 часов для каждого пользователя
+    - С блокировкой для защиты от одновременных сообщений
     """
     try:
         message = update.business_message
         user_id = str(message.from_user.id)
-        chat_id = str(message.chat_id)
         current_time = time.time()
-        
-        # Создаем ключ для диалога (уникальная комбинация пользователя и чата)
-        dialog_key = f"{user_id}_{chat_id}"
         
         logger.info(f"📨 Получено business сообщение от @{message.from_user.username}: {message.text}")
         
-        # Проверяем историю ответов
-        last_response = user_response_history.get(dialog_key, 0)
-        time_since_last = current_time - last_response
+        # Создаем блокировку для пользователя, если её нет
+        if user_id not in response_locks:
+            response_locks[user_id] = asyncio.Lock()
         
-        # 12 часов = 43200 секунд
-        if time_since_last < 43200:
-            hours_left = int((43200 - time_since_last) / 3600)
-            minutes_left = int(((43200 - time_since_last) % 3600) / 60)
-            logger.info(f"⏳ Пользователю @{message.from_user.username} уже отвечали. Следующий автоответ через {hours_left}ч {minutes_left}м")
+        # Используем блокировку для предотвращения одновременных ответов
+        async with response_locks[user_id]:
+            # Проверяем историю ответов
+            last_response = user_response_history.get(user_id, 0)
+            time_since_last = current_time - last_response
             
-            # Если прошло больше часа, отправляем короткое напоминание
-            if time_since_last > 3600 and time_since_last < 43200:
-                await message.reply_text(
-                    f"🕒 Напоминаем: мы уже отвечали вам сегодня. Если нужна помощь специалиста, нажмите кнопку «Позвать менеджера».",
-                    reply_markup=get_main_keyboard()
-                )
-                logger.info(f"💬 Отправлено напоминание @{message.from_user.username}")
-            return
-        
-        # Отправляем приветствие (первый раз за 12 часов)
-        welcome_text = (
-            f"👋 Здравствуйте! Это типография *АлиПринт*.\n\n"
-            f"⏰ {CONTACTS['working_hours']}\n"
-            f"📍 {CONTACTS['address']}\n"
-            f"🚇 {CONTACTS['metro']}\n\n"
-            f"📌 *Это автоматическое сообщение (1 раз в 12 часов)*\n"
-            f"Если нужна помощь специалиста — нажмите кнопку «Позвать менеджера».\n\n"
-            f"Чем мы можем вам помочь?"
-        )
-        
-        await message.reply_text(
-            welcome_text,
-            reply_markup=get_main_keyboard(),
-            parse_mode='Markdown'
-        )
-        
-        # Запоминаем время ответа
-        user_response_history[dialog_key] = current_time
-        save_responses(user_response_history)
-        
-        # Ограничиваем размер истории (оставляем последние 1000 записей)
-        if len(user_response_history) > 1000:
-            # Сортируем по времени и оставляем самые свежие
-            sorted_items = sorted(user_response_history.items(), key=lambda x: x[1], reverse=True)[:1000]
-            user_response_history.clear()
-            user_response_history.update(dict(sorted_items))
+            # 12 часов = 43200 секунд
+            if time_since_last < 43200:
+                hours_left = int((43200 - time_since_last) / 3600)
+                minutes_left = int(((43200 - time_since_last) % 3600) / 60)
+                logger.info(f"⏳ Пользователю @{message.from_user.username} уже отвечали. Следующий автоответ через {hours_left}ч {minutes_left}м")
+                
+                # Если прошло больше часа и не отправляли напоминание в последний час
+                if 3600 < time_since_last < 43200:
+                    last_remind = last_reminder.get(user_id, 0)
+                    if current_time - last_remind > 3600:  # Не чаще раза в час
+                        await message.reply_text(
+                            f"🕒 Напоминаем: мы уже отвечали вам сегодня. Если нужна помощь специалиста, нажмите кнопку «Позвать менеджера».",
+                            reply_markup=get_main_keyboard()
+                        )
+                        last_reminder[user_id] = current_time
+                        logger.info(f"💬 Отправлено напоминание @{message.from_user.username}")
+                return
+            
+            # Отправляем приветствие (первый раз за 12 часов)
+            welcome_text = (
+                f"👋 Здравствуйте! Это типография *АлиПринт*.\n\n"
+                f"⏰ {CONTACTS['working_hours']}\n"
+                f"📍 {CONTACTS['address']}\n"
+                f"🚇 {CONTACTS['metro']}\n\n"
+                f"📌 *Это автоматическое сообщение (1 раз в 12 часов)*\n"
+                f"Если нужна помощь специалиста — нажмите кнопку «Позвать менеджера».\n\n"
+                f"Чем мы можем вам помочь?"
+            )
+            
+            await message.reply_text(
+                welcome_text,
+                reply_markup=get_main_keyboard(),
+                parse_mode='Markdown'
+            )
+            
+            # Запоминаем время ответа
+            user_response_history[user_id] = current_time
             save_responses(user_response_history)
-        
-        logger.info(f"✅ Отправлен автоответ @{message.from_user.username} (следующий через 12ч)")
+            
+            # Ограничиваем размер истории (оставляем последние 1000 записей)
+            if len(user_response_history) > 1000:
+                # Сортируем по времени и оставляем самые свежие
+                sorted_items = sorted(user_response_history.items(), key=lambda x: x[1], reverse=True)[:1000]
+                user_response_history.clear()
+                user_response_history.update(dict(sorted_items))
+                save_responses(user_response_history)
+            
+            logger.info(f"✅ Отправлен автоответ @{message.from_user.username} (следующий через 12ч)")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в business_message: {e}")
@@ -424,12 +423,10 @@ async def connect_with_human(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Связь с живым менеджером"""
     user = query.from_user
     user_id = str(user.id)
-    chat_id = str(query.message.chat_id)
-    dialog_key = f"{user_id}_{chat_id}"
     
     # Удаляем пользователя из истории автоответов
-    if dialog_key in user_response_history:
-        del user_response_history[dialog_key]
+    if user_id in user_response_history:
+        del user_response_history[user_id]
         save_responses(user_response_history)
         logger.info(f"👤 Пользователь @{user.username} отключил автоответ")
     
@@ -483,10 +480,12 @@ def main() -> None:
             business_message
         ))
         
-        # Добавляем самопинг каждые 10 минут
+        # Добавляем самопинг каждые 10 минут (если установлен job-queue)
         if application.job_queue:
             application.job_queue.run_repeating(ping_self, interval=600, first=30)
             logger.info("⏰ Самопинг запущен (каждые 10 минут)")
+        else:
+            logger.warning("⚠️ JobQueue не установлен. Самопинг не работает. Установите python-telegram-bot[job-queue]")
         
         logger.info("✅ Бот успешно инициализирован, начинаем polling...")
         
